@@ -2,6 +2,7 @@
    OpenHub R1 — Mobile Control Center for Rabbit R1
    8 Tabs: Dashboard, Agents, Tasks, Money, Chat, Arcade, Actions, Status
    Dynamic theme per tab • R1 hardware events • WebSocket real-time
+   Speech-to-text • Camera capture • Agent task assignment
    ═══════════════════════════════════════════════════════════════════ */
 (function(){
 'use strict';
@@ -29,10 +30,22 @@ const TABS = [
 let currentTab = 0;
 let ws = null;
 let wsConnected = false;
-let cache = { agents:[], tasks:[], logs:[], stats:{}, streams:[], chat:[] };
+let cache = { agents:[], tasks:[], logs:[], stats:{}, streams:[], chat:[], r1builder:{} };
 let particleCtx = null;
 let particles = [];
-let currentChatMsg = '';
+let chatScrollLocked = true;
+
+// ─── Speech-to-Text State ──────────────────────────────────────────
+let sttActive = false;
+let sttRecognition = null;
+let sttLang = 'en-US';
+
+// ─── Camera State ──────────────────────────────────────────────────
+let cameraStream = null;
+
+// ─── Notification Badges ───────────────────────────────────────────
+let unreadChat = 0;
+let lastChatCount = 0;
 
 // ─── DOM ───────────────────────────────────────────────────────────
 const $view = document.getElementById('view');
@@ -48,7 +61,7 @@ function init(){
   applyTheme(0);
   renderTab();
   fetchAll();
-  setInterval(fetchAll, 15000);
+  setInterval(fetchAll, 12000);
   setupR1Events();
 }
 
@@ -58,7 +71,9 @@ function buildTabBar(){
   TABS.forEach((t,i) => {
     const btn = document.createElement('button');
     btn.className = 'tab-btn' + (i===currentTab?' active':'');
-    btn.innerHTML = `<span class="tab-icon">${t.icon}</span><span>${t.label}</span>`;
+    let badge = '';
+    if(t.id === 'chat' && unreadChat > 0) badge = `<span class="tab-badge">${unreadChat > 9?'9+':unreadChat}</span>`;
+    btn.innerHTML = `<span class="tab-icon">${t.icon}</span><span>${t.label}</span>${badge}`;
     btn.onclick = () => switchTab(i);
     $tabbar.appendChild(btn);
   });
@@ -66,7 +81,10 @@ function buildTabBar(){
 
 function switchTab(idx){
   if(idx<0||idx>=TABS.length||idx===currentTab) return;
+  // Stop STT when leaving chat
+  if(TABS[currentTab].id === 'chat' && sttActive) stopSTT();
   currentTab = idx;
+  if(TABS[idx].id === 'chat') unreadChat = 0;
   applyTheme(idx);
   buildTabBar();
   renderTab();
@@ -76,7 +94,6 @@ function applyTheme(idx){
   const t = TABS[idx].theme;
   const hsl = `hsl(${t.h},${t.s}%,${t.l}%)`;
   const hslDim = `hsl(${t.h},${t.s}%,${Math.max(t.l-30,10)}%)`;
-  const hslGlow = `hsl(${t.h},${t.s}%,${Math.min(t.l+10,70)}%)`;
   document.documentElement.style.setProperty('--accent', hsl);
   document.documentElement.style.setProperty('--accent2', hslDim);
   document.documentElement.style.setProperty('--theme-h', t.h);
@@ -86,7 +103,6 @@ function applyTheme(idx){
 
 // ─── R1 Hardware Events ────────────────────────────────────────────
 function setupR1Events(){
-  // Scroll wheel: switch tabs
   window.addEventListener('scrollUp', () => {
     if(isScrollable()) return;
     switchTab(currentTab - 1);
@@ -95,12 +111,15 @@ function setupR1Events(){
     if(isScrollable()) return;
     switchTab(currentTab + 1);
   });
-  // Side click: primary action on current tab
   window.addEventListener('sideClick', () => handleSideClick());
-  // Long press: toggle connection
   window.addEventListener('longPressStart', () => {
-    if(ws && ws.readyState === WebSocket.OPEN) ws.close();
-    else connectWS();
+    // Long press on chat tab = toggle STT
+    if(TABS[currentTab].id === 'chat'){
+      if(sttActive) stopSTT(); else startSTT();
+    } else {
+      if(ws && ws.readyState === WebSocket.OPEN) ws.close();
+      else connectWS();
+    }
   });
 
   // PC fallbacks
@@ -110,9 +129,14 @@ function setupR1Events(){
     if(e.key === 'ArrowDown'){ e.preventDefault(); switchTab(currentTab+1); }
     if(e.key === ' '||e.key === 'Enter'){ e.preventDefault(); handleSideClick(); }
     if(e.key === 'Escape') switchTab(0);
-    // Number keys 1-8 for direct tab access
     const num = parseInt(e.key);
     if(num >= 1 && num <= 8) switchTab(num - 1);
+    // 'v' key = toggle STT in chat
+    if(e.key === 'v' && TABS[currentTab].id === 'chat'){
+      if(sttActive) stopSTT(); else startSTT();
+    }
+    // 'c' key = camera in chat
+    if(e.key === 'c' && TABS[currentTab].id === 'chat') capturePhoto();
   });
   window.addEventListener('wheel', e => {
     if(e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
@@ -130,7 +154,10 @@ function isScrollable(){
 
 function handleSideClick(){
   const tab = TABS[currentTab].id;
-  if(tab === 'chat') sendChat();
+  if(tab === 'chat'){
+    if(sttActive) return; // don't send while recording
+    sendChat();
+  }
   if(tab === 'actions') runCurrentAction();
   if(tab === 'arcade') launchRandomGame();
 }
@@ -156,10 +183,8 @@ function animateParticles(){
   const h = TABS[currentTab].theme.h;
   particles.forEach(p => {
     p.x += p.vx; p.y += p.vy;
-    if(p.x < 0) p.x = 240;
-    if(p.x > 240) p.x = 0;
-    if(p.y < 0) p.y = 282;
-    if(p.y > 282) p.y = 0;
+    if(p.x < 0) p.x = 240; if(p.x > 240) p.x = 0;
+    if(p.y < 0) p.y = 282; if(p.y > 282) p.y = 0;
     particleCtx.beginPath();
     particleCtx.arc(p.x, p.y, p.r, 0, Math.PI*2);
     particleCtx.fillStyle = `hsla(${h},100%,70%,${p.a})`;
@@ -185,10 +210,7 @@ function connectWS(){
     };
     ws.onerror = () => {};
     ws.onmessage = e => {
-      try {
-        const d = JSON.parse(e.data);
-        handleWSMessage(d);
-      } catch(err){}
+      try { handleWSMessage(JSON.parse(e.data)); } catch(err){}
     };
   } catch(e){
     wsConnected = false;
@@ -201,62 +223,60 @@ function handleWSMessage(d){
   if(d.type === 'agent_updated' || d.type === 'agent_added') fetchAgents();
   if(d.type === 'task_created' || d.type === 'task_updated' || d.type === 'task_completed') fetchTasks();
   if(d.type === 'activity_new' || d.type === 'traffic_log' || d.type === 'income_log' || d.type === 'hustler_log' || d.type === 'r1builder_log') fetchLogs();
-  if(d.type === 'chat_message') fetchChat();
+  if(d.type === 'chat_message'){
+    fetchChat().then(()=>{
+      if(TABS[currentTab].id !== 'chat'){
+        unreadChat++;
+        buildTabBar();
+      } else {
+        renderChat();
+      }
+    });
+  }
+  if(d.type === 'notification_new') toast(d.notification?.message || 'New notification');
 }
 
 // ─── Data Fetching ─────────────────────────────────────────────────
 async function fetchAll(){
-  await Promise.all([fetchAgents(), fetchTasks(), fetchLogs(), fetchStats(), fetchStreams(), fetchChat()]);
+  await Promise.all([fetchAgents(), fetchTasks(), fetchLogs(), fetchStats(), fetchStreams(), fetchChat(), fetchR1Builder()]);
   if(TABS[currentTab].id === 'dashboard') renderTab();
 }
 
 async function fetchAgents(){
-  try{
-    const r = await fetch(API+'/api/agents');
-    const j = await r.json();
-    if(j.success) cache.agents = j.agents || [];
-  } catch(e){}
+  try{ const r = await fetch(API+'/api/agents'); const j = await r.json(); if(j.success) cache.agents = j.agents || []; } catch(e){}
 }
 async function fetchTasks(){
-  try{
-    const r = await fetch(API+'/api/tasks');
-    const j = await r.json();
-    if(j.success) cache.tasks = j.tasks || [];
-  } catch(e){}
+  try{ const r = await fetch(API+'/api/tasks'); const j = await r.json(); if(j.success) cache.tasks = j.tasks || []; } catch(e){}
 }
 async function fetchLogs(){
-  try{
-    const r = await fetch(API+'/api/activity?limit=30');
-    const j = await r.json();
-    if(j.success) cache.logs = j.logs || j.activities || [];
-  } catch(e){}
+  try{ const r = await fetch(API+'/api/activity?limit=30'); const j = await r.json(); if(j.success) cache.logs = j.logs || j.activities || []; } catch(e){}
 }
 async function fetchStats(){
-  try{
-    const r = await fetch(API+'/api/stats');
-    const j = await r.json();
-    if(j.success) cache.stats = j;
-  } catch(e){}
+  try{ const r = await fetch(API+'/api/stats'); const j = await r.json(); if(j.success) cache.stats = j; } catch(e){}
 }
 async function fetchStreams(){
-  try{
-    const r = await fetch(API+'/api/income/streams');
-    const j = await r.json();
-    if(j.success) cache.streams = j.streams || [];
-  } catch(e){}
+  try{ const r = await fetch(API+'/api/income/streams'); const j = await r.json(); if(j.success) cache.streams = j.streams || []; } catch(e){}
 }
 async function fetchChat(){
   try{
-    const r = await fetch(API+'/api/chat?limit=30');
+    const r = await fetch(API+'/api/chat?limit=50');
     const j = await r.json();
-    if(j.success) cache.chat = j.messages || [];
+    if(j.success){
+      const prev = cache.chat.length;
+      cache.chat = j.messages || [];
+      if(TABS[currentTab].id === 'chat' && cache.chat.length > prev) renderChat();
+    }
   } catch(e){}
+}
+async function fetchR1Builder(){
+  try{ const r = await fetch(API+'/api/r1builder/status'); const j = await r.json(); if(j.success) cache.r1builder = j.status || {}; } catch(e){}
 }
 
 // ─── Tab Renderers ─────────────────────────────────────────────────
 function renderTab(){
   const id = TABS[currentTab].id;
   $view.scrollTop = 0;
+  $view.className = id === 'chat' ? 'view chat-mode' : 'view';
   switch(id){
     case 'dashboard': renderDashboard(); break;
     case 'agents': renderAgents(); break;
@@ -276,7 +296,8 @@ function renderDashboard(){
   const total = (cache.agents||[]).length;
   const taskTotal = (cache.tasks||[]).length;
   const taskDone = (cache.tasks||[]).filter(t=>t.status==='completed').length;
-  const recent = (cache.logs||[]).slice(0,5);
+  const recent = (cache.logs||[]).slice(0,6);
+  const r1b = cache.r1builder || {};
 
   $view.innerHTML = `
     <div class="stat-grid">
@@ -285,6 +306,10 @@ function renderDashboard(){
       <div class="stat-box"><div class="stat-num">${taskTotal}</div><div class="stat-label">TASKS</div></div>
       <div class="stat-box"><div class="stat-num" style="color:var(--success)">${taskDone}</div><div class="stat-label">DONE</div></div>
     </div>
+    ${r1b.name?`<div class="card" style="border-left:2px solid var(--accent)">
+      <div class="card-row"><span class="card-label">🐰 R1 Builder</span><span class="agent-status ${r1b.running?'working':'idle'}">${r1b.running?'building':'idle'}</span></div>
+      <div class="card-row"><span class="card-label">Lvl ${r1b.level||1} • ${r1b.xp||0} XP</span><span class="card-label">${r1b.totalCreations||0} creations</span></div>
+    </div>`:''}
     <div class="section-title">⚡ Recent Activity</div>
     ${recent.map(l => `
       <div class="activity-item">
@@ -299,31 +324,38 @@ function renderDashboard(){
 // ─── Agents ────────────────────────────────────────────────────────
 function renderAgents(){
   const agents = cache.agents||[];
+  const working = agents.filter(a=>a.status==='working');
+  const idle = agents.filter(a=>a.status==='idle'||a.status==='active');
   $view.innerHTML = `
-    <div class="section-title">🤖 Agent Fleet (${agents.length})</div>
-    ${agents.map(a => `
-      <div class="agent-card">
-        <div class="agent-avatar">${a.avatar||'🤖'}</div>
-        <div class="agent-info">
-          <div class="agent-name">${esc(a.name)}</div>
-          <div class="agent-role">${esc(a.role||'')}</div>
-          ${a.current_task?`<div class="agent-role" style="color:var(--accent)">▸ ${esc(a.current_task)}</div>`:''}
-          ${a.level?`<div class="xp-bar"><div class="xp-fill" style="width:${Math.min(((a.xp||0)%1000)/10,100)}%"></div></div>
-          <div class="agent-role">Lvl ${a.level} • ${a.xp||0} XP • ${esc(a.skill||'Generalist')}</div>`:''}
-        </div>
-        <div class="agent-status ${a.status}">${a.status||'idle'}</div>
-      </div>
-    `).join('') || '<div class="card" style="text-align:center;color:var(--text-dim)">No agents registered</div>'}
+    <div class="section-title">🤖 Working (${working.length})</div>
+    ${working.map(a => agentCard(a)).join('') || '<div class="card" style="text-align:center;color:var(--text-dim);font-size:8px">No agents working</div>'}
+    <div class="section-title">💤 Idle / Active (${idle.length})</div>
+    ${idle.slice(0,12).map(a => agentCard(a)).join('')}
+    ${idle.length > 12 ? `<div class="card" style="text-align:center;color:var(--text-dim);font-size:8px">+${idle.length-12} more</div>` : ''}
   `;
+}
+
+function agentCard(a){
+  return `<div class="agent-card" onclick="window._oh.showAgent('${esc(a.name)}')">
+    <div class="agent-avatar">${a.avatar||'🤖'}</div>
+    <div class="agent-info">
+      <div class="agent-name">${esc(a.name)}</div>
+      <div class="agent-role">${esc(a.role||'')}</div>
+      ${a.current_task?`<div class="agent-role" style="color:var(--accent);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">▸ ${esc(a.current_task)}</div>`:''}
+      ${a.level?`<div class="xp-bar"><div class="xp-fill" style="width:${Math.min(((a.xp||0)%1000)/10,100)}%"></div></div>
+      <div class="agent-role">Lvl ${a.level} • ${a.xp||0} XP</div>`:''}
+    </div>
+    <div class="agent-status ${a.status}">${a.status||'idle'}</div>
+  </div>`;
 }
 
 // ─── Tasks ─────────────────────────────────────────────────────────
 function renderTasks(){
-  const tasks = (cache.tasks||[]).slice(0,20);
+  const tasks = (cache.tasks||[]).slice(0,30);
   const pending = tasks.filter(t=>t.status==='pending'||t.status==='in-progress');
   const done = tasks.filter(t=>t.status==='completed');
   $view.innerHTML = `
-    <div class="section-title">▣ Active Tasks (${pending.length})</div>
+    <div class="section-title">▣ Active (${pending.length})</div>
     ${pending.map(t => `
       <div class="task-item ${t.priority||''}">
         <div class="task-title">#${t.id} ${esc(t.title)}</div>
@@ -331,11 +363,11 @@ function renderTasks(){
         <div class="task-progress"><div class="task-progress-fill" style="width:${t.progress||0}%"></div></div>
       </div>
     `).join('') || '<div class="card" style="text-align:center;color:var(--text-dim)">No active tasks</div>'}
-    <div class="section-title">✓ Completed (${done.length})</div>
-    ${done.slice(0,5).map(t => `
-      <div class="task-item" style="opacity:0.6;border-left-color:var(--success)">
-        <div class="task-title" style="text-decoration:line-through">#${t.id} ${esc(t.title)}</div>
-        <div class="task-meta">${esc(t.assignee||'')} • done</div>
+    <div class="section-title">✓ Done (${done.length})</div>
+    ${done.slice(0,8).map(t => `
+      <div class="task-item" style="opacity:0.5;border-left-color:var(--success)">
+        <div class="task-title" style="text-decoration:line-through;font-size:8px">#${t.id} ${esc(t.title)}</div>
+        <div class="task-meta">${esc(t.assignee||'')}</div>
       </div>
     `).join('') || ''}
   `;
@@ -352,50 +384,248 @@ function renderMoney(){
       <div class="stat-box"><div class="stat-num">${streams.length}</div><div class="stat-label">STREAMS</div></div>
       <div class="stat-box"><div class="stat-num" style="color:var(--success)">${active.length}</div><div class="stat-label">ACTIVE</div></div>
     </div>
-    <div class="section-title">💰 Income Streams</div>
-    ${streams.slice(0,8).map(s => `
+    <div class="section-title">💰 Streams</div>
+    ${streams.slice(0,10).map(s => `
       <div class="card">
         <div class="card-row">
-          <span class="card-label">${esc(s.name)}</span>
+          <span class="card-label" style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.name)}</span>
           <span class="agent-status ${s.status==='active'?'working':'idle'}">${s.status}</span>
         </div>
-        ${s.method?`<div class="card-row"><span class="card-label" style="font-size:7px;color:var(--text-dim)">${esc(s.method).substring(0,60)}</span></div>`:''}
       </div>
-    `).join('') || '<div class="card" style="text-align:center;color:var(--text-dim)">No income streams yet</div>'}
+    `).join('') || '<div class="card" style="text-align:center;color:var(--text-dim)">No streams yet</div>'}
   `;
 }
 
-// ─── Chat ──────────────────────────────────────────────────────────
+// ─── Chat (with STT + Camera) ──────────────────────────────────────
 function renderChat(){
-  const msgs = (cache.chat||[]).slice(-20);
+  const msgs = (cache.chat||[]).slice(-30);
+  const sttBtnClass = sttActive ? 'chat-mic active' : 'chat-mic';
+  const sttLabel = sttActive ? '■' : '●';
+  const sttTitle = sttActive ? 'Stop recording' : 'Start speech-to-text';
+
   $view.innerHTML = `
     <div class="chat-messages" id="chatMsgs">
-      ${msgs.map(m => `
-        <div class="chat-msg ${m.sender==='Ghost'||m.sender==='You'?'self':'other'}">
+      ${msgs.map(m => {
+        const isImage = m.message && m.message.startsWith('data:image');
+        const isSelf = m.sender==='Ghost'||m.sender==='You';
+        return `<div class="chat-msg ${isSelf?'self':'other'}">
           <div class="chat-sender">${esc(m.sender||'')}</div>
-          <div class="chat-bubble">${esc(m.message||'')}</div>
-        </div>
-      `).join('') || '<div style="text-align:center;color:var(--text-dim);padding:20px;font-size:8px">No messages yet. Press side button to send.</div>'}
+          ${isImage
+            ? `<div class="chat-bubble"><img src="${m.message}" style="max-width:160px;border-radius:4px" onclick="window._oh.expandImage(this.src)"></div>`
+            : `<div class="chat-bubble">${formatMsg(m.message||'')}</div>`
+          }
+        </div>`;
+      }).join('') || '<div style="text-align:center;color:var(--text-dim);padding:30px 10px;font-size:8px">Chat with your agents. Use the mic button for voice input or the camera to send photos.</div>'}
     </div>
-    <div class="chat-input-row">
-      <input class="chat-input" id="chatIn" placeholder="Type a message..." maxlength="200">
+    <div id="sttIndicator" class="stt-indicator" style="display:${sttActive?'flex':'none'}">
+      <span class="stt-dot"></span>
+      <span class="stt-text">Listening...</span>
+    </div>
+    <div class="chat-controls">
+      <button class="${sttBtnClass}" onclick="window._oh.toggleSTT()" title="${sttTitle}">${sttLabel}</button>
+      <button class="chat-cam" onclick="window._oh.capturePhoto()" title="Take photo">📷</button>
+      <input class="chat-input" id="chatIn" placeholder="Type or speak..." maxlength="500">
       <button class="chat-send" onclick="window._oh.sendChat()">▶</button>
     </div>
   `;
   const cm = document.getElementById('chatMsgs');
-  if(cm) cm.scrollTop = cm.scrollHeight;
-  // Focus handling for R1: use scroll to select, sideClick to type
+  if(cm && chatScrollLocked) cm.scrollTop = cm.scrollHeight;
   const inp = document.getElementById('chatIn');
   if(inp) inp.addEventListener('keydown', e => { if(e.key==='Enter') sendChat(); });
 }
 
+function formatMsg(msg){
+  if(!msg) return '';
+  // Escape HTML then convert newlines
+  return esc(msg).replace(/\n/g,'<br>');
+}
+
+// ─── Speech-to-Text ────────────────────────────────────────────────
+function startSTT(){
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SpeechRecognition){
+    toast('Speech recognition not supported in this browser');
+    return;
+  }
+  if(sttRecognition){ try{ sttRecognition.abort(); }catch(e){} }
+
+  sttRecognition = new SpeechRecognition();
+  sttRecognition.continuous = true;
+  sttRecognition.interimResults = true;
+  sttRecognition.lang = sttLang;
+  sttRecognition.maxAlternatives = 1;
+
+  const inp = document.getElementById('chatIn');
+  let finalTranscript = inp ? inp.value : '';
+
+  sttRecognition.onresult = e => {
+    let interim = '';
+    for(let i = e.resultIndex; i < e.results.length; i++){
+      const t = e.results[i][0].transcript;
+      if(e.results[i].isFinal) finalTranscript += t + ' ';
+      else interim = t;
+    }
+    if(inp) inp.value = (finalTranscript + interim).trim();
+  };
+
+  sttRecognition.onerror = e => {
+    if(e.error === 'no-speech'){
+      // Silently restart
+      if(sttActive) try{ sttRecognition.start(); }catch(ex){}
+      return;
+    }
+    if(e.error === 'aborted') return;
+    toast('Speech error: ' + e.error);
+    stopSTT();
+  };
+
+  sttRecognition.onend = () => {
+    // Auto-restart if still active
+    if(sttActive) try{ sttRecognition.start(); }catch(e){}
+  };
+
+  try{
+    sttRecognition.start();
+    sttActive = true;
+    toast('Listening... speak now');
+    if(TABS[currentTab].id === 'chat') renderChat();
+  } catch(e){
+    toast('Could not start speech recognition');
+  }
+}
+
+function stopSTT(){
+  sttActive = false;
+  if(sttRecognition){
+    try{ sttRecognition.stop(); }catch(e){}
+    sttRecognition = null;
+  }
+  toast('Speech recognition stopped');
+  if(TABS[currentTab].id === 'chat') renderChat();
+}
+
+// ─── Camera Capture ────────────────────────────────────────────────
+function capturePhoto(){
+  // Check if R1 has camera plugin
+  if(isR1 && typeof PluginMessageHandler !== 'undefined'){
+    // R1 camera: request photo via plugin
+    try {
+      PluginMessageHandler.postMessage(JSON.stringify({
+        type: 'camera',
+        action: 'capture'
+      }));
+      toast('Camera opened — photo will appear in chat');
+    } catch(e){
+      toast('Camera not available on this device');
+    }
+    return;
+  }
+
+  // Browser/R1 WebView fallback: use getUserMedia
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    toast('Camera not available');
+    return;
+  }
+
+  // Create hidden video + canvas for capture
+  const video = document.createElement('video');
+  video.setAttribute('autoplay','');
+  video.setAttribute('playsinline','');
+  video.style.cssText = 'position:fixed;top:0;left:0;width:240px;height:282px;z-index:10000;object-fit:cover;background:#000';
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;top:0;left:0;width:240px;height:282px;z-index:10001;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding:10px;background:linear-gradient(transparent 60%,rgba(0,0,0,0.7))';
+
+  const captureBtn = document.createElement('button');
+  captureBtn.textContent = '📸 CAPTURE';
+  captureBtn.style.cssText = 'background:var(--accent);color:#000;border:none;border-radius:20px;padding:6px 16px;font-size:10px;font-weight:700;font-family:JetBrains Mono,monospace;cursor:pointer;margin-bottom:10px';
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.textContent = '✕ Cancel';
+  cancelBtn.style.cssText = 'background:transparent;color:#fff;border:1px solid rgba(255,255,255,0.3);border-radius:12px;padding:4px 12px;font-size:8px;font-family:JetBrains Mono,monospace;cursor:pointer;margin-bottom:4px';
+
+  overlay.appendChild(captureBtn);
+  overlay.appendChild(cancelBtn);
+  document.body.appendChild(video);
+  document.body.appendChild(overlay);
+
+  navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment', width:{ideal:240}, height:{ideal:282} } })
+    .then(stream => {
+      cameraStream = stream;
+      video.srcObject = stream;
+      video.play();
+
+      function doCapture(){
+        const canvas = document.createElement('canvas');
+        canvas.width = 240; canvas.height = 282;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, 240, 282);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+
+        // Stop camera
+        stream.getTracks().forEach(t => t.stop());
+        document.body.removeChild(video);
+        document.body.removeChild(overlay);
+        cameraStream = null;
+
+        // Send photo in chat
+        sendImageChat(dataUrl);
+      }
+
+      captureBtn.onclick = doCapture;
+      cancelBtn.onclick = () => {
+        stream.getTracks().forEach(t => t.stop());
+        document.body.removeChild(video);
+        document.body.removeChild(overlay);
+        cameraStream = null;
+      };
+    })
+    .catch(e => {
+      toast('Camera access denied: ' + e.message);
+      if(video.parentNode) document.body.removeChild(video);
+      if(overlay.parentNode) document.body.removeChild(overlay);
+    });
+}
+
+function sendImageChat(dataUrl){
+  // Add to local cache immediately
+  cache.chat.push({sender:'Ghost', message:dataUrl, timestamp:new Date().toISOString()});
+  if(TABS[currentTab].id === 'chat') renderChat();
+
+  // Send to server
+  fetch(API+'/api/chat', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({sender:'Ghost', message:'[Camera photo] '+dataUrl, channel:'main'})
+  }).then(()=>{
+    // Also notify via AI chat so agents can analyze it
+    return fetch(API+'/api/chat/ai', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({message:'[User sent a camera photo. Analyze the image content and describe what you see, identify objects, text, people, or anything notable. Then suggest what can be done with this image.]', sender:'Ghost'})
+    });
+  }).then(r=>r.json()).then(()=>{
+    fetchChat().then(()=>{ if(TABS[currentTab].id==='chat') renderChat(); });
+  }).catch(()=>{});
+}
+
+function expandImage(src){
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;top:0;left:0;width:240px;height:282px;z-index:10002;background:rgba(0,0,0,0.9);display:flex;align-items:center;justify-content:center;cursor:pointer';
+  const img = document.createElement('img');
+  img.src = src;
+  img.style.cssText = 'max-width:230px;max-height:270px;border-radius:4px';
+  overlay.appendChild(img);
+  overlay.onclick = () => document.body.removeChild(overlay);
+  document.body.appendChild(overlay);
+}
+
+// ─── Send Chat ─────────────────────────────────────────────────────
 function sendChat(){
   const inp = document.getElementById('chatIn');
   const msg = (inp?inp.value:'').trim();
   if(!msg) return;
   if(inp) inp.value = '';
-  // Optimistic add
-  cache.chat.push({sender:'Ghost',message:msg,timestamp:new Date().toISOString()});
+  chatScrollLocked = true;
+  cache.chat.push({sender:'Ghost', message:msg, timestamp:new Date().toISOString()});
   renderChat();
   fetch(API+'/api/chat/ai', {
     method:'POST', headers:{'Content-Type':'application/json'},
@@ -405,30 +635,69 @@ function sendChat(){
   }).catch(()=>{});
 }
 
+// ─── Agent Detail (tap an agent card) ──────────────────────────────
+function showAgentDetail(name){
+  const a = (cache.agents||[]).find(x => x.name === name);
+  if(!a) return;
+  const evo = a.level ? `Lvl ${a.level} • ${a.xp||0} XP • ${esc(a.skill||'Generalist')}` : '';
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;top:0;left:0;width:240px;height:282px;z-index:10002;background:rgba(10,10,15,0.95);padding:10px;overflow-y:auto';
+  overlay.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <div style="font-family:Orbitron,sans-serif;font-size:10px;color:var(--accent)">${a.avatar||'🤖'} ${esc(a.name)}</div>
+      <button onclick="this.parentElement.parentElement.remove()" style="background:transparent;color:var(--text-dim);border:none;font-size:14px;cursor:pointer">✕</button>
+    </div>
+    <div class="card">
+      <div class="card-row"><span class="card-label">Role</span><span class="card-value" style="font-size:8px">${esc(a.role||'')}</span></div>
+      <div class="card-row"><span class="card-label">Status</span><span class="agent-status ${a.status}">${a.status||'idle'}</span></div>
+      ${a.current_task?`<div class="card-row"><span class="card-label">Task</span><span class="card-value" style="font-size:7px;max-width:140px;overflow:hidden;text-overflow:ellipsis">${esc(a.current_task)}</span></div>`:''}
+      ${evo?`<div class="card-row"><span class="card-label">Evolution</span><span class="card-value" style="font-size:7px">${evo}</span></div>`:''}
+      <div class="card-row"><span class="card-label">Completed</span><span class="card-value">${a.tasks_completed||0}</span></div>
+    </div>
+    <div style="margin-top:6px;display:flex;gap:4px">
+      <button class="btn btn-accent btn-sm" onclick="window._oh.assignTaskTo('${esc(a.name)}');this.parentElement.parentElement.remove()">Assign Task</button>
+      <button class="btn btn-outline btn-sm" onclick="this.parentElement.parentElement.remove()">Close</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+}
+
+function assignTaskTo(agentName){
+  const title = prompt('Task for ' + agentName + ':');
+  if(!title) return;
+  fetch(API+'/api/tasks', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({title, assignee:agentName, priority:'medium', stage:'queued', status:'pending'})
+  }).then(r=>r.json()).then(d => {
+    toast(d.message || 'Task created');
+    fetchTasks();
+  }).catch(e => toast('Error: '+e.message));
+}
+
 // ─── Arcade ────────────────────────────────────────────────────────
 const GAMES = [
-  {name:'Tic Tac Toe',icon:'✕',color:'var(--accent)'},
-  {name:'Snake',icon:'🐍',color:'var(--success)'},
-  {name:'2048',icon:'🔢',color:'var(--warn)'},
-  {name:'Memory',icon:'🃏',color:'var(--accent2)'},
-  {name:'Pong',icon:'🏓',color:'var(--accent)'},
-  {name:'Flappy',icon:'🐦',color:'var(--success)'},
-  {name:'Simon',icon:'🔴',color:'var(--danger)'},
-  {name:'Whack Mole',icon:'🔨',color:'var(--warn)'},
+  {name:'Tic Tac Toe',icon:'✕'},
+  {name:'Snake',icon:'🐍'},
+  {name:'2048',icon:'🔢'},
+  {name:'Memory',icon:'🃏'},
+  {name:'Pong',icon:'🏓'},
+  {name:'Flappy',icon:'🐦'},
+  {name:'Simon',icon:'🔴'},
+  {name:'Whack Mole',icon:'🔨'},
 ];
 
 function renderArcade(){
-  const xp = cache.agents?.find(a=>a.name==='R1 Builder')?.xp||0;
-  const level = Math.floor(xp/1000)+1;
+  const xp = cache.r1builder?.xp||0;
+  const level = cache.r1builder?.level||1;
   $view.innerHTML = `
     <div class="card" style="text-align:center">
-      <div style="font-family:'Orbitron',sans-serif;font-size:10px;color:var(--accent)">ARCADE</div>
+      <div style="font-family:Orbitron,sans-serif;font-size:10px;color:var(--accent)">ARCADE</div>
       <div class="xp-bar" style="margin:4px 0"><div class="xp-fill" style="width:${(xp%1000)/10}%"></div></div>
       <div style="font-size:7px;color:var(--text-dim)">Level ${level} • ${xp} XP</div>
     </div>
     <div class="game-grid">
       ${GAMES.map(g => `
-        <div class="game-card" onclick="window._oh.toast('${g.name} coming soon!')">
+        <div class="game-card" onclick="window._oh.toast('${g.name} — coming soon!')">
           <div class="game-icon">${g.icon}</div>
           <div class="game-name">${g.name}</div>
         </div>
@@ -438,20 +707,19 @@ function renderArcade(){
 }
 
 function launchRandomGame(){
-  const g = GAMES[Math.floor(Math.random()*GAMES.length)];
-  toast(g.name+' coming soon!');
+  toast(GAMES[Math.floor(Math.random()*GAMES.length)].name+' coming soon!');
 }
 
 // ─── Actions ───────────────────────────────────────────────────────
 const ACTIONS = [
-  {name:'Run POD Cycle', endpoint:'/api/pod/run', method:'POST', desc:'Generate new print-on-demand designs'},
-  {name:'Run Income Brainstorm', endpoint:'/api/income/run', method:'POST', desc:'Brainstorm new passive income streams'},
-  {name:'Run Money Hustler', endpoint:'/api/hustler/run', method:'POST', desc:'Hunt for legal income opportunities'},
-  {name:'Run Traffic Agent', endpoint:'/api/traffic/run', method:'POST', desc:'Plan customer acquisition strategies'},
-  {name:'Run R1 Builder', endpoint:'/api/r1builder/run', method:'POST', desc:'Generate new R1 Creation ideas'},
-  {name:'Run Full Monetize', endpoint:'/api/monetize/run', method:'POST', desc:'Full automation: POD + Income + Evolve'},
-  {name:'Force Learn', endpoint:'/api/monetize/learn', method:'POST', desc:'Attribute payouts and evolve agents'},
-  {name:'Sync PayPal', endpoint:'/api/payouts/sync', method:'POST', desc:'Sync real PayPal payout data'},
+  {name:'Run POD Cycle', endpoint:'/api/pod/run', desc:'Generate new print-on-demand designs'},
+  {name:'Income Brainstorm', endpoint:'/api/income/run', desc:'Brainstorm new passive income streams'},
+  {name:'Money Hustler', endpoint:'/api/hustler/run', desc:'Hunt for legal income opportunities'},
+  {name:'Traffic Agent', endpoint:'/api/traffic/run', desc:'Plan customer acquisition strategies'},
+  {name:'R1 Builder', endpoint:'/api/r1builder/run', desc:'Generate new R1 Creation ideas'},
+  {name:'Full Monetize', endpoint:'/api/monetize/run', desc:'Full automation: POD + Income + Evolve'},
+  {name:'Force Learn', endpoint:'/api/monetize/learn', desc:'Attribute payouts and evolve agents'},
+  {name:'Sync PayPal', endpoint:'/api/payouts/sync', desc:'Sync real PayPal payout data'},
 ];
 
 let currentActionIdx = 0;
@@ -470,8 +738,9 @@ function renderActions(){
 function runAction(idx){
   const a = ACTIONS[idx];
   if(!a) return;
+  currentActionIdx = idx;
   toast('Running '+a.name+'...');
-  fetch(API+a.endpoint, {method:a.method, headers:{'Content-Type':'application/json'}, body:'{}'})
+  fetch(API+a.endpoint, {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'})
     .then(r=>r.json())
     .then(d => toast(d.message||'Done!'))
     .catch(e => toast('Error: '+e.message));
@@ -484,26 +753,41 @@ function renderStatus(){
   const s = cache.stats;
   const sys = s.system||{};
   $view.innerHTML = `
-    <div class="section-title">● System Status</div>
+    <div class="section-title">● System</div>
     <div class="status-grid">
       <div class="status-item"><div class="status-val">${wsConnected?'✓':'✗'}</div><div class="status-key">WebSocket</div></div>
       <div class="status-item"><div class="status-val">${sys.cpu||'—'}%</div><div class="status-key">CPU</div></div>
       <div class="status-item"><div class="status-val">${sys.memory||'—'}%</div><div class="status-key">Memory</div></div>
-      <div class="status-item"><div class="status-val">${sys.memoryUsedGB||'—'}</div><div class="status-key">RAM Used</div></div>
+      <div class="status-item"><div class="status-val">${sys.memoryUsedGB||'—'}</div><div class="status-key">RAM</div></div>
       <div class="status-item"><div class="status-val">${s.totalAgents||0}</div><div class="status-key">Agents</div></div>
       <div class="status-item"><div class="status-val">${s.totalTasks||0}</div><div class="status-key">Tasks</div></div>
-      <div class="status-item"><div class="status-val">${s.completedTasks||0}</div><div class="status-key">Completed</div></div>
-      <div class="status-item"><div class="status-val">${s.totalLearnings||0}</div><div class="status-key">Learnings</div></div>
+      <div class="status-item"><div class="status-val">${s.completedTasks||0}</div><div class="status-key">Done</div></div>
+      <div class="status-item"><div class="status-val">${s.totalLearnings||0}</div><div class="status-key">Learn</div></div>
     </div>
-    <div class="section-title">📋 Server Info</div>
+    <div class="section-title">📋 Server</div>
     <div class="card">
       <div class="card-row"><span class="card-label">Platform</span><span class="card-value">${sys.platform||'—'}</span></div>
-      <div class="card-row"><span class="card-label">Hostname</span><span class="card-value" style="font-size:7px">${sys.hostname||'—'}</span></div>
+      <div class="card-row"><span class="card-label">Host</span><span class="card-value" style="font-size:7px">${sys.hostname||'—'}</span></div>
       <div class="card-row"><span class="card-label">Node</span><span class="card-value">${sys.nodeVersion||'—'}</span></div>
-      <div class="card-row"><span class="card-label">Uptime</span><span class="card-value">${sys.uptime?Math.floor(sys.uptime/3600)+'h':'—'}</span></div>
-      <div class="card-row"><span class="card-label">R1 Device</span><span class="card-value">${isR1?'Yes':'No (Browser)'}</span></div>
+      <div class="card-row"><span class="card-label">Uptime</span><span class="card-value">${sys.uptime?formatUptime(sys.uptime):'—'}</span></div>
+      <div class="card-row"><span class="card-label">R1</span><span class="card-value">${isR1?'Yes':'Browser'}</span></div>
+      <div class="card-row"><span class="card-label">Skills</span><span class="card-value">${s.skillsEnabled||0}/${s.skillsTotal||0}</span></div>
+    </div>
+    <div class="section-title">🐰 R1 Builder</div>
+    <div class="card">
+      <div class="card-row"><span class="card-label">Status</span><span class="agent-status ${cache.r1builder?.running?'working':'idle'}">${cache.r1builder?.running?'building':'idle'}</span></div>
+      <div class="card-row"><span class="card-label">Level</span><span class="card-value">${cache.r1builder?.level||1}</span></div>
+      <div class="card-row"><span class="card-label">XP</span><span class="card-value">${cache.r1builder?.xp||0}</span></div>
+      <div class="card-row"><span class="card-label">Creations</span><span class="card-value">${cache.r1builder?.totalCreations||0}</span></div>
+      <div class="card-row"><span class="card-label">Knowledge</span><span class="card-value">${cache.r1builder?.knowledgeBase?.existingApps||0} apps</span></div>
     </div>
   `;
+}
+
+function formatUptime(s){
+  const h = Math.floor(s/3600);
+  const m = Math.floor((s%3600)/60);
+  return h > 0 ? h+'h '+m+'m' : m+'m';
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────
@@ -526,8 +810,15 @@ function toast(msg){
   setTimeout(()=>{ if(el.parentNode) el.parentNode.removeChild(el); }, 3000);
 }
 
-// ─── Global API for inline handlers ────────────────────────────────
-window._oh = { sendChat, runAction, toast, runCurrentAction };
+// ─── Global API ────────────────────────────────────────────────────
+window._oh = {
+  sendChat, runAction, toast, runCurrentAction,
+  toggleSTT: ()=>{ if(sttActive) stopSTT(); else startSTT(); },
+  capturePhoto,
+  showAgent: showAgentDetail,
+  assignTaskTo,
+  expandImage
+};
 
 // ─── Boot ──────────────────────────────────────────────────────────
 if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
