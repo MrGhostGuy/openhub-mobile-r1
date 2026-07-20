@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=240,height=282,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<meta name="theme-color" content="#0a0a0f">
+<title>OpenHub R1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<canvas id="particleBg"></canvas>
+<div class="scanlines"></div>
+<div id="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo-wrap"><div class="logo">OH</div><div class="logo-ring"></div></div>
+      <div class="brand-text"><h1>OPENHUB</h1><span class="brand-sub">R1 EDITION</span></div>
+    </div>
+    <div class="status-pill" id="connPill"><span class="dot"></span><span id="connText">...</span></div>
+  </header>
+  <main class="view" id="view">
+    <div class="loading"><div class="loader-ring"><div></div><div></div><div></div><div></div></div><span>INITIALIZING</span></div>
+  </main>
+  <nav class="tabbar" id="tabbar"></nav>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
