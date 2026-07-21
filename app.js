@@ -159,7 +159,7 @@ function handleSideClick(){
     sendChat();
   }
   if(tab === 'actions') runCurrentAction();
-  if(tab === 'arcade') launchRandomGame();
+  if(tab === 'arcade' && !document.getElementById('arcadeOverlay')) launchRandomGame();
 }
 
 // ─── Particle Background ───────────────────────────────────────────
@@ -675,39 +675,87 @@ function assignTaskTo(agentName){
 }
 
 // ─── Arcade ────────────────────────────────────────────────────────
-const GAMES = [
-  {name:'Tic Tac Toe',icon:'✕'},
-  {name:'Snake',icon:'🐍'},
-  {name:'2048',icon:'🔢'},
-  {name:'Memory',icon:'🃏'},
-  {name:'Pong',icon:'🏓'},
-  {name:'Flappy',icon:'🐦'},
-  {name:'Simon',icon:'🔴'},
-  {name:'Whack Mole',icon:'🔨'},
-];
+let arcadePlayerCount = 1;
 
 function renderArcade(){
   const xp = cache.r1builder?.xp||0;
   const level = cache.r1builder?.level||1;
+  const games = window.Arcade ? Arcade.GAMES : [];
+  const agentScores = window.Arcade ? Arcade.getAgentScores() : [];
   $view.innerHTML = `
     <div class="card" style="text-align:center">
       <div style="font-family:Orbitron,sans-serif;font-size:10px;color:var(--accent)">ARCADE</div>
       <div class="xp-bar" style="margin:4px 0"><div class="xp-fill" style="width:${(xp%1000)/10}%"></div></div>
       <div style="font-size:7px;color:var(--text-dim)">Level ${level} • ${xp} XP</div>
     </div>
+    <div class="section-title">🎮 Select Players</div>
+    <div class="player-select">
+      ${[1,2,3,4].map(n => `<button class="player-btn${n===arcadePlayerCount?' active':''}" onclick="window._oh.setArcadePlayers(${n})">${n}P</button>`).join('')}
+    </div>
     <div class="game-grid">
-      ${GAMES.map(g => `
-        <div class="game-card" onclick="window._oh.toast('${g.name} — coming soon!')">
+      ${games.map((g,i) => `
+        <div class="game-card" onclick="window._oh.launchGame(${i})">
           <div class="game-icon">${g.icon}</div>
           <div class="game-name">${g.name}</div>
+          <div style="font-size:6px;color:var(--text-dim);margin-top:1px">${g.players}P</div>
         </div>
       `).join('')}
     </div>
+    ${agentScores.length ? `
+      <div class="section-title">🏆 Leaderboard</div>
+      <div class="card">
+        <div class="lb-table">
+          <div class="lb-row header"><span class="rank">#</span><span class="name">Agent</span><span class="score">Score</span></div>
+          ${agentScores.map((a,i) => `
+            <div class="lb-row"><span class="rank">${i+1}</span><span class="name">${esc(a.name)}</span><span class="score">${a.total}</span></div>
+          `).join('')}
+        </div>
+      </div>
+    ` : ''}
   `;
 }
 
+function setArcadePlayers(n){
+  arcadePlayerCount = n;
+  renderArcade();
+}
+
+function launchGame(idx){
+  if(!window.Arcade){ toast('Arcade not loaded'); return; }
+  const games = Arcade.GAMES;
+  const g = games[idx];
+  if(!g) return;
+  // For single-player-only games, force 1 player
+  const pc = g.players === '1' ? 1 : arcadePlayerCount;
+
+  // Create overlay with canvas
+  const overlay = document.createElement('div');
+  overlay.className = 'arcade-overlay';
+  overlay.id = 'arcadeOverlay';
+  const cvs = document.createElement('canvas');
+  overlay.appendChild(cvs);
+  const backBtn = document.createElement('button');
+  backBtn.className = 'arcade-back';
+  backBtn.textContent = '✕';
+  overlay.appendChild(backBtn);
+  document.body.appendChild(overlay);
+
+  backBtn.onclick = () => {
+    Arcade.exitGame();
+    if(overlay.parentNode) overlay.parentNode.removeChild(overlay);
+  };
+
+  Arcade.startGame(cvs, idx, pc, () => {
+    // On game exit: record score from leaderboard if available, close overlay
+    if(overlay.parentNode) overlay.parentNode.removeChild(overlay);
+    renderArcade();
+  });
+}
+
 function launchRandomGame(){
-  toast(GAMES[Math.floor(Math.random()*GAMES.length)].name+' coming soon!');
+  if(!window.Arcade){ toast('Arcade not loaded'); return; }
+  const idx = Math.floor(Math.random()*Arcade.GAMES.length);
+  launchGame(idx);
 }
 
 // ─── Actions ───────────────────────────────────────────────────────
@@ -817,7 +865,9 @@ window._oh = {
   capturePhoto,
   showAgent: showAgentDetail,
   assignTaskTo,
-  expandImage
+  expandImage,
+  launchGame,
+  setArcadePlayers
 };
 
 // ─── Boot ──────────────────────────────────────────────────────────

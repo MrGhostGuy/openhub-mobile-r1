@@ -320,6 +320,52 @@ body{transition:background var(--transition),color var(--transition)}
   transition:background var(--transition),border-color var(--transition),color var(--transition)
 }
 
+/* ─── Arcade Game Overlay ─── */
+.arcade-overlay{
+  position:fixed;top:0;left:0;width:240px;height:282px;
+  z-index:10000;background:#0a0a0f;
+  display:flex;flex-direction:column;align-items:center;
+}
+.arcade-overlay canvas{
+  display:block;width:240px;height:282px;
+}
+.arcade-back{
+  position:absolute;top:4px;right:4px;z-index:10001;
+  width:22px;height:22px;border-radius:50%;
+  background:rgba(255,51,102,0.2);border:1px solid var(--danger);
+  color:var(--danger);font-size:9px;font-weight:700;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  font-family:'JetBrains Mono',monospace;
+}
+.arcade-back:active{background:rgba(255,51,102,0.4)}
+
+/* Player count selector */
+.player-select{
+  display:flex;gap:2px;justify-content:center;margin:4px 0;
+}
+.player-btn{
+  padding:2px 6px;border-radius:var(--radius);
+  background:rgba(255,255,255,0.05);border:1px solid var(--glass-border);
+  color:var(--text-dim);font-size:7px;font-family:'JetBrains Mono',monospace;
+  cursor:pointer;transition:all var(--transition);
+}
+.player-btn.active{background:rgba(0,240,255,0.15);border-color:var(--accent);color:var(--accent)}
+.player-btn:active{transform:scale(0.95)}
+
+/* Leaderboard */
+.lb-table{width:100%;font-size:7px}
+.lb-row{
+  display:flex;justify-content:space-between;padding:2px 4px;
+  border-bottom:1px solid rgba(255,255,255,0.03);
+}
+.lb-row.header{color:var(--accent);font-weight:700;font-size:7px;border-bottom:1px solid rgba(0,240,255,0.15)}
+.lb-row .rank{width:18px;text-align:center;color:var(--text-dim)}
+.lb-row .name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-bright)}
+.lb-row .score{width:40px;text-align:right;color:var(--accent);font-weight:700}
+.lb-row:nth-child(2) .rank{color:#ffaa00}
+.lb-row:nth-child(3) .rank{color:#c0c0c0}
+.lb-row:nth-child(4) .rank{color:#cd7f32}
+
 /* ─── Toast ─── */
 .toast{
   position:fixed;top:34px;left:50%;transform:translateX(-50%);
