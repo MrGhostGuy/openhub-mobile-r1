@@ -377,3 +377,35 @@ body{transition:background var(--transition),color var(--transition)}
 }
 @keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(-10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
 @keyframes toastOut{to{opacity:0;transform:translateX(-50%) translateY(-10px)}}
+
+/* ─── Creations ─── */
+.creation-grid{
+  display:flex;flex-direction:column;gap:4px
+}
+.creation-card{
+  background:var(--glass);border:1px solid var(--glass-border);
+  border-radius:var(--radius);padding:6px;
+  cursor:pointer;transition:all var(--transition);
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+}
+.creation-card:active{
+  transform:scale(0.97);
+  background:rgba(0,240,255,0.08);
+  border-color:rgba(0,240,255,0.3);
+}
+.creation-icon{
+  font-size:16px;margin-bottom:2px;text-align:center
+}
+.creation-name{
+  font-family:'Orbitron',sans-serif;font-size:8px;font-weight:700;
+  color:var(--text-bright);text-align:center;letter-spacing:0.5px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+}
+.creation-desc{
+  font-size:7px;color:var(--text-dim);text-align:center;margin-top:2px;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden
+}
+.creation-qr-note{
+  font-size:6px;color:var(--text-dim);text-align:center;margin-top:3px;
+  padding-top:3px;border-top:1px solid rgba(255,255,255,0.05)
+}

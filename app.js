@@ -22,6 +22,7 @@ const TABS = [
   { id:'money',     icon:'◆', label:'Money',  theme:{ h:120,s:80,l:45 } },
   { id:'chat',      icon:'◉', label:'Chat',   theme:{ h:200,s:90,l:55 } },
   { id:'arcade',    icon:'♠', label:'Arcade', theme:{ h:300,s:80,l:55 } },
+  { id:'creations', icon:'◆', label:'Apps',   theme:{ h:60,s:100,l:50 } },
   { id:'actions',   icon:'⚡', label:'Actions', theme:{ h:55,s:100,l:50 } },
   { id:'status',    icon:'●', label:'Status',  theme:{ h:0,s:0,l:50 } },
 ];
@@ -284,6 +285,7 @@ function renderTab(){
     case 'money': renderMoney(); break;
     case 'chat': renderChat(); break;
     case 'arcade': renderArcade(); break;
+    case 'creations': renderCreations(); break;
     case 'actions': renderActions(); break;
     case 'status': renderStatus(); break;
   }
@@ -795,6 +797,90 @@ function runAction(idx){
 }
 
 function runCurrentAction(){ runAction(currentActionIdx); }
+
+// ─── Creations ──────────────────────────────────────────────────────
+function renderCreations(){
+  const creations = [
+    { 
+      name: 'Pal-culator', 
+      desc: 'Palworld 1.0 breeding calculator with 299 Pals, combos, history & favorites',
+      url: 'https://mrghostguy.github.io/palworld-breeding-r1/',
+      qr: 'Palworld-Breeding-R1-Authentic-Creation-Code.png',
+      icon: '🐰'
+    },
+    { 
+      name: 'DOOM by GLX', 
+      desc: 'Classic DOOM ported to R1 with touch controls',
+      url: 'https://mrghostguy.github.io/r1-doom-by-glx/',
+      qr: 'DOOM-by-GLX-QR.png',
+      icon: '👹'
+    },
+    { 
+      name: 'Buckshot Roulette', 
+      desc: 'Horror-themed roulette game with items & lives system',
+      url: 'https://mrghostguy.github.io/r1-buckshot-roulette/',
+      qr: 'R1-Buckshot-Roulette-QR.png',
+      icon: '🔫'
+    },
+    { 
+      name: '2D Minecraft', 
+      desc: '2D Minecraft clone with crafting & building',
+      url: 'https://mrghostguy.github.io/r1-2d-minecraft/',
+      qr: 'R1-2D-Minecraft-QR-Enhanced.png',
+      icon: '⛏️'
+    },
+    { 
+      name: 'Ghost Tap Groove', 
+      desc: 'Rhythm game with scroll wheel & side button controls',
+      url: 'https://mrghostguy.github.io/ghost-tap-groove/',
+      qr: 'Ghost-Tap-Groove-QR.png',
+      icon: '🎵'
+    },
+    { 
+      name: 'Ghost Builder', 
+      desc: 'R1 Creation builder & manager',
+      url: 'https://mrghostguy.github.io/ghost-builder/',
+      qr: 'GhostBuilder-R1-QRCode.png',
+      icon: '🏗️'
+    },
+    { 
+      name: 'OpenHub Mobile', 
+      desc: 'OpenHub R1 dashboard with agents, tasks & arcade',
+      url: 'https://mrghostguy.github.io/openhub-mobile-r1/',
+      qr: 'OpenHub-Mobile-R1-QR-Enhanced.png',
+      icon: '📱'
+    },
+    { 
+      name: 'Social Dashboard', 
+      desc: 'Social media analytics & management dashboard',
+      url: 'https://mrghostguy.github.io/social-dashboard/',
+      qr: 'Social Dashboard.png',
+      icon: '📊'
+    },
+    { 
+      name: 'Xbox Game Clips', 
+      desc: 'View & manage Xbox game clips on R1',
+      url: 'https://mrghostguy.github.io/xbox-clips/',
+      qr: 'Xbox Game Clips.png',
+      icon: '🎮'
+    }
+  ];
+
+  $view.innerHTML = `
+    <div class="section-title">◆ R1 Creations</div>
+    <div style="font-size:7px;color:var(--text-dim);margin-bottom:6px">Scan with R1 camera to install directly</div>
+    <div class="creation-grid">
+      ${creations.map(c => `
+        <div class="creation-card" onclick="window.open('${c.url}','_blank')">
+          <div class="creation-icon">${c.icon}</div>
+          <div class="creation-name">${c.name}</div>
+          <div class="creation-desc">${c.desc}</div>
+          <div class="creation-qr-note">📱 QR: ${c.qr}</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
 
 // ─── Status ────────────────────────────────────────────────────────
 function renderStatus(){
