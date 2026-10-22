@@ -22,7 +22,7 @@ const TABS = [
   { id:'money',     icon:'◆', label:'Money',  theme:{ h:120,s:80,l:45 } },
   { id:'chat',      icon:'◉', label:'Chat',   theme:{ h:200,s:90,l:55 } },
   { id:'arcade',    icon:'♠', label:'Arcade', theme:{ h:300,s:80,l:55 } },
-  { id:'creations', icon:'◆', label:'Apps',   theme:{ h:60,s:100,l:50 } },
+  { id:'creations', icon:'◆', label:'Games',  theme:{ h:60,s:100,l:50 } },
   { id:'actions',   icon:'⚡', label:'Actions', theme:{ h:55,s:100,l:50 } },
   { id:'status',    icon:'●', label:'Status',  theme:{ h:0,s:0,l:50 } },
 ];
@@ -798,88 +798,213 @@ function runAction(idx){
 
 function runCurrentAction(){ runAction(currentActionIdx); }
 
-// ─── Creations ──────────────────────────────────────────────────────
-function renderCreations(){
-  const creations = [
-    { 
-      name: 'Pal-culator', 
-      desc: 'Palworld 1.0 breeding calculator with 299 Pals, combos, history & favorites',
-      url: 'https://mrghostguy.github.io/palworld-breeding-r1/',
-      qr: 'Palworld-Breeding-R1-Authentic-Creation-Code.png',
-      icon: '🐰'
-    },
-    { 
-      name: 'DOOM by GLX', 
-      desc: 'Classic DOOM ported to R1 with touch controls',
-      url: 'https://mrghostguy.github.io/r1-doom-by-glx/',
-      qr: 'DOOM-by-GLX-QR.png',
-      icon: '👹'
-    },
-    { 
-      name: 'Buckshot Roulette', 
-      desc: 'Horror-themed roulette game with items & lives system',
-      url: 'https://mrghostguy.github.io/r1-buckshot-roulette/',
-      qr: 'R1-Buckshot-Roulette-QR.png',
-      icon: '🔫'
-    },
-    { 
-      name: '2D Minecraft', 
-      desc: '2D Minecraft clone with crafting & building',
-      url: 'https://mrghostguy.github.io/r1-2d-minecraft/',
-      qr: 'R1-2D-Minecraft-QR-Enhanced.png',
-      icon: '⛏️'
-    },
-    { 
-      name: 'Ghost Tap Groove', 
-      desc: 'Rhythm game with scroll wheel & side button controls',
-      url: 'https://mrghostguy.github.io/ghost-tap-groove/',
-      qr: 'Ghost-Tap-Groove-QR.png',
-      icon: '🎵'
-    },
-    { 
-      name: 'Ghost Builder', 
-      desc: 'R1 Creation builder & manager',
-      url: 'https://mrghostguy.github.io/ghost-builder/',
-      qr: 'GhostBuilder-R1-QRCode.png',
-      icon: '🏗️'
-    },
-    { 
-      name: 'OpenHub Mobile', 
-      desc: 'OpenHub R1 dashboard with agents, tasks & arcade',
-      url: 'https://mrghostguy.github.io/openhub-mobile-r1/',
-      qr: 'OpenHub-Mobile-R1-QR-Enhanced.png',
-      icon: '📱'
-    },
-    { 
-      name: 'Social Dashboard', 
-      desc: 'Social media analytics & management dashboard',
-      url: 'https://mrghostguy.github.io/social-dashboard/',
-      qr: 'Social Dashboard.png',
-      icon: '📊'
-    },
-    { 
-      name: 'Xbox Game Clips', 
-      desc: 'View & manage Xbox game clips on R1',
-      url: 'https://mrghostguy.github.io/xbox-clips/',
-      qr: 'Xbox Game Clips.png',
-      icon: '🎮'
-    }
-  ];
+// ─── R1 Games ───────────────────────────────────────────────────────
+const R1_GAMES = [
+  {
+    id:'doom', name:'DOOM by GLX', icon:'👹',
+    desc:'Classic DOOM ported to R1 — 9 levels, 7 weapons, 7 enemy types',
+    longDesc:'A faithful DOOM demake for the R1: raycast 3D rendering, 9 asymmetric maze levels (Hangar through Military Base), 7 iconic weapons up to the BFG-9000, keys, secrets, powerups and 7 enemy types from Zombies to the Baron of Hell.',
+    version:'ff2b61b', vdate:'Oct 21 2026',
+    changes:[
+      '9 brand-new asymmetric DOOM-style maps replaced the old symmetric boxes',
+      'Faster movement & turning, aggressive enemies, screen shake on fire',
+      'Single-tap doors + subtle auto-aim assist'
+    ],
+    url:'https://mrghostguy.github.io/r1-doom-by-glx/'
+  },
+  {
+    id:'megabonk', name:'Megabonk', icon:'🔥',
+    desc:'Survivor roguelite — 25 weapons, bosses, weapon evolution',
+    longDesc:'Megabonk R1 edition: a full survivor-style roguelite with 25 weapons, 20+ characters, auto-aim combat, XP/gold economy, chests & shrines, bosses every 5 waves, curses, meta progression and Megabonk-style weapon evolution (maxed weapons evolve into Inferno Staff, Blood Blade & more).',
+    version:'c5dfba3', vdate:'Oct 21 2026',
+    changes:[
+      'Full R1 touch controls: tap-to-select chars, scroll-wheel menus',
+      'Fixed dead render loop, 16.7x weapon-speed bug & boss waves',
+      'Auto-aim, XP economy rebalance, weapon evolution added'
+    ],
+    url:'https://mrghostguy.github.io/megabonk-r1/'
+  },
+  {
+    id:'buckshot', name:'Buckshot Roulette', icon:'🔫',
+    desc:'Horror Russian roulette vs the Dealer — items & lives',
+    longDesc:'Face the Dealer in a horror-themed shell game. Randomized live/blank shells each round, items that bend the odds, a lives system and a canvas-rendered Dealer with intense atmosphere.',
+    version:'68ad62c', vdate:'Oct 21 2026',
+    changes:[
+      'Fixed shot animation crash (missing brace)',
+      'Horror overhaul: canvas-rendered Dealer + atmosphere',
+      'Randomized live/blank shell counts each round'
+    ],
+    url:'https://mrghostguy.github.io/buckshot-roulette/'
+  },
+  {
+    id:'minimon', name:'Minimon', icon:'⚡',
+    desc:'Creature-catching adventure — 100 hand-drawn monsters',
+    longDesc:'Catch, collect and battle 100 hand-drawn creatures. Party building, sphere catch mechanics with status multipliers, party detail screens and full save management.',
+    version:'d814bcf', vdate:'Oct 13 2026',
+    changes:[
+      'Restored all 100 hand-drawn creature sprites',
+      'Fixed catch formula: sphere + status multipliers',
+      'Wired up party details & delete-save'
+    ],
+    url:'https://mrghostguy.github.io/minimon-r1/'
+  },
+  {
+    id:'zoomuh', name:'Zoo-muh', icon:'🃏',
+    desc:'3-of-a-Kind card game with the Zoo trio',
+    longDesc:'Zoo-muh: the 3-of-a-Kind card game. Match trios, play through the Zoo trio decks, clean card-table UI built for the R1 screen.',
+    version:'7ef5509', vdate:'Oct 11 2026',
+    changes:[
+      'Game renamed to Zoo-muh',
+      '3-of-a-Kind hosted here (was a landing page)',
+      'New hub icon + layout fixes'
+    ],
+    url:'https://mrghostguy.github.io/zoo-muh/'
+  },
+  {
+    id:'survive', name:'Survive R1', icon:'🌲',
+    desc:'Open-world survival — quests, fishing, bosses & biomes',
+    longDesc:'Survive: The Untamed Wilderness. Open-world survival with a quest system, stats screen, minimap, biome exploration tracking, fishing, mining, boss fights, weather overlay, day/night torch & campfire lighting.',
+    version:'604d66c', vdate:'Oct 20 2026',
+    changes:[
+      'Fixed map render & entity update crashes',
+      'Quest system, stats screen, minimap, biome tracking',
+      'Fishing, bosses, weather, torch/campfire lights'
+    ],
+    url:'https://mrghostguy.github.io/survive-r1/'
+  },
+  {
+    id:'ghosttap', name:'Ghost Tap Groove', icon:'🎵',
+    desc:'Rhythm game — 17 songs, scroll & tap to the beat',
+    longDesc:'A rhythm game with 17 songs (8 MP3 tracks + synthesized). Single-touch validated controls, chords removed for R1 playability, async audio loading with pause/resume support.',
+    version:'f31aa93', vdate:'Oct 20 2026',
+    changes:[
+      'Restored missing songs array (17 tracks)',
+      'Single-touch validated controls, chords removed',
+      'MP3 audio for songs 6-13 + synth fallback'
+    ],
+    url:'https://mrghostguy.github.io/ghost-tap-groove/'
+  },
+  {
+    id:'minecraft', name:'2D Minecraft', icon:'⛏️',
+    desc:'2D Minecraft — mine, craft & build',
+    longDesc:'A 2D Minecraft clone for the R1: mine blocks, craft items and build in an endless side-scrolling world, with audio and touch-friendly controls.',
+    version:'5cc7e68', vdate:'Oct 20 2026',
+    changes:[
+      'Fixed startup crash (missing script tag + canvas init)',
+      'Canvas save/restore stack overflow fix',
+      'Audio init on game start for mobile'
+    ],
+    url:'https://mrghostguy.github.io/r1-2d-minecraft/'
+  },
+  {
+    id:'rogue', name:'Ghosts Rogue Adventure', icon:'👻',
+    desc:'Roguelite shooter — rounds, perks & elemental guns',
+    longDesc:'A round-based roguelite shooter: escalating enemy waves, perk unlocks every 5 levels, elemental bullet types, thorns/shield perks, scaling boss fights and bigger slow-bullet enemies in later rounds.',
+    version:'059d701', vdate:'Feb 28 2026',
+    changes:[
+      'Balance patch: enemy count/health scaling after R5-6',
+      'New bigger enemies with slow-moving bullets',
+      'Perk unlocks every 5 levels, harder bosses'
+    ],
+    url:'https://mrghostguy.github.io/ghosts-rogue-adventure/'
+  },
+  {
+    id:'companions', name:'Ghost Companions', icon:'🐾',
+    desc:'Collect & raise ghost companions',
+    longDesc:'Collect and raise ghost companions that accompany you — the original GhostLegacyX companion collection experience.',
+    version:'be57121', vdate:'Feb 21 2026',
+    changes:[
+      'Initial release: ghost companion collection'
+    ],
+    url:'https://mrghostguy.github.io/ghost-companions/'
+  }
+];
 
+let openGameIdx = -1;
+
+function renderCreations(){
+  const tools = [
+    { name:'Pal-culator', desc:'Palworld 1.0 breeding calculator — 299 Pals, combos, history', url:'https://mrghostguy.github.io/palworld-breeding-r1/', icon:'🐰' },
+    { name:'OpenHub Mobile', desc:'This dashboard — agents, tasks, money & arcade', url:'https://mrghostguy.github.io/openhub-mobile-r1/', icon:'📱' },
+    { name:'Social Dashboard', desc:'Social media analytics & management', url:'https://mrghostguy.github.io/social-dashboard/', icon:'📊' },
+    { name:'Xbox Game Clips', desc:'View & manage Xbox clips on R1', url:'https://mrghostguy.github.io/xbox-clips/', icon:'🎮' }
+  ];
   $view.innerHTML = `
-    <div class="section-title">◆ R1 Creations</div>
-    <div style="font-size:7px;color:var(--text-dim);margin-bottom:6px">Scan with R1 camera to install directly</div>
+    <div class="section-title">◆ R1 Games</div>
+    <div style="font-size:7px;color:var(--text-dim);margin-bottom:6px">Tap a game for details, screenshots & its creation code</div>
     <div class="creation-grid">
-      ${creations.map(c => `
-        <div class="creation-card" onclick="window.open('${c.url}','_blank')">
-          <div class="creation-icon">${c.icon}</div>
-          <div class="creation-name">${c.name}</div>
-          <div class="creation-desc">${c.desc}</div>
-          <div class="creation-qr-note">📱 QR: ${c.qr}</div>
+      ${R1_GAMES.map((g, i) => `
+        <div class="creation-card${openGameIdx===i?' open':''}" onclick="window._oh.toggleGameDetail(${i})">
+          <div style="display:flex;align-items:center;gap:6px">
+            <div class="creation-icon" style="margin:0">${g.icon}</div>
+            <div style="flex:1;min-width:0">
+              <div class="creation-name" style="text-align:left">${g.name}</div>
+              <div class="creation-desc" style="text-align:left;-webkit-line-clamp:1">${g.desc}</div>
+            </div>
+            <div class="game-ver-badge">v${g.version.slice(0,7)}<br><span>${g.vdate}</span></div>
+            <div class="game-chevron">${openGameIdx===i?'▲':'▼'}</div>
+          </div>
+          ${openGameIdx===i ? `
+          <div class="game-detail">
+            <div class="game-detail-desc">${g.longDesc}</div>
+            <div class="shot-row">
+              ${[1,2,3].map(n => `<img class="shot-thumb" src="shots/${g.id}-${n}.png" alt="screenshot ${n}" loading="lazy" onclick="event.stopPropagation();window._oh.showShot('${g.id}',${n})">`).join('')}
+            </div>
+            <div class="game-changes-title">Latest update — ${g.vdate}</div>
+            <ul class="game-changes">${g.changes.map(c => `<li>${c}</li>`).join('')}</ul>
+            <div class="game-qr-wrap" onclick="event.stopPropagation();window._oh.showQr('${g.id}')">
+              <img class="game-qr" src="qr/${g.id}.png" alt="creation code">
+              <div class="game-qr-label">Creation Code — tap to enlarge<br><b>Scan with R1 camera to install</b></div>
+            </div>
+            <button class="open-game-btn" onclick="event.stopPropagation();window.open('${g.url}','_blank')">▶ OPEN GAME</button>
+          </div>` : ''}
+        </div>
+      `).join('')}
+    </div>
+    <div class="section-title" style="margin-top:10px">◆ Tools & Apps</div>
+    <div class="creation-grid">
+      ${tools.map(t => `
+        <div class="creation-card" onclick="window.open('${t.url}','_blank')">
+          <div style="display:flex;align-items:center;gap:6px">
+            <div class="creation-icon" style="margin:0">${t.icon}</div>
+            <div style="flex:1;min-width:0">
+              <div class="creation-name" style="text-align:left">${t.name}</div>
+              <div class="creation-desc" style="text-align:left;-webkit-line-clamp:1">${t.desc}</div>
+            </div>
+          </div>
         </div>
       `).join('')}
     </div>
   `;
+}
+
+function toggleGameDetail(i){
+  openGameIdx = openGameIdx === i ? -1 : i;
+  renderCreations();
+}
+
+function showQr(id){
+  let ov = document.getElementById('qrOverlay');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = 'qrOverlay';
+    ov.onclick = () => ov.style.display = 'none';
+    document.body.appendChild(ov);
+  }
+  ov.innerHTML = `<div class="qr-overlay-inner"><img src="qr/${id}.png"><div style="font-size:8px;color:#fff;margin-top:8px;text-align:center">Scan with R1 camera<br>Tap anywhere to close</div></div>`;
+  ov.style.display = 'flex';
+}
+
+function showShot(id, n){
+  let ov = document.getElementById('qrOverlay');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = 'qrOverlay';
+    ov.onclick = () => ov.style.display = 'none';
+    document.body.appendChild(ov);
+  }
+  ov.innerHTML = `<div class="qr-overlay-inner"><img src="shots/${id}-${n}.png" style="width:auto;max-height:70vh"><div style="font-size:8px;color:#fff;margin-top:8px;text-align:center">Tap anywhere to close</div></div>`;
+  ov.style.display = 'flex';
 }
 
 // ─── Status ────────────────────────────────────────────────────────
@@ -953,7 +1078,8 @@ window._oh = {
   assignTaskTo,
   expandImage,
   launchGame,
-  setArcadePlayers
+  setArcadePlayers,
+  toggleGameDetail, showQr, showShot
 };
 
 // ─── Boot ──────────────────────────────────────────────────────────

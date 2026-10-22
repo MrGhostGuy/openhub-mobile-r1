@@ -409,3 +409,63 @@ body{transition:background var(--transition),color var(--transition)}
   font-size:6px;color:var(--text-dim);text-align:center;margin-top:3px;
   padding-top:3px;border-top:1px solid rgba(255,255,255,0.05)
 }
+
+/* ─── R1 Games detail dropdown ─── */
+.game-ver-badge{
+  font-size:6px;color:var(--accent);text-align:right;line-height:1.4;
+  font-family:'JetBrains Mono',monospace;flex-shrink:0
+}
+.game-ver-badge span{ color:var(--text-dim);font-size:5px }
+.game-chevron{ font-size:7px;color:var(--text-dim);flex-shrink:0;margin-left:2px }
+.game-detail{
+  margin-top:6px;padding-top:6px;border-top:1px solid rgba(0,240,255,0.15)
+}
+.game-detail-desc{
+  font-size:7px;color:var(--text);line-height:1.5;margin-bottom:5px
+}
+.shot-row{
+  display:flex;gap:4px;overflow-x:auto;padding-bottom:2px;margin-bottom:5px;
+  scrollbar-width:none
+}
+.shot-row::-webkit-scrollbar{ display:none }
+.shot-thumb{
+  width:72px;height:auto;border-radius:3px;border:1px solid var(--glass-border);
+  flex-shrink:0;cursor:pointer
+}
+.shot-thumb:active{ border-color:var(--accent) }
+.game-changes-title{
+  font-size:7px;color:var(--accent);font-weight:700;margin-bottom:2px;
+  font-family:'Orbitron',sans-serif
+}
+.game-changes{
+  margin:0 0 6px 10px;padding:0
+}
+.game-changes li{
+  font-size:6.5px;color:var(--text-dim);line-height:1.5
+}
+.game-qr-wrap{
+  display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.04);
+  border:1px solid var(--glass-border);border-radius:var(--radius);
+  padding:6px;margin-bottom:6px;cursor:pointer
+}
+.game-qr{
+  width:64px;height:64px;border-radius:3px;flex-shrink:0
+}
+.game-qr-label{
+  font-size:7px;color:var(--text-dim);line-height:1.6
+}
+.game-qr-label b{ color:var(--accent);font-size:7px }
+.open-game-btn{
+  width:100%;background:linear-gradient(135deg,rgba(0,240,255,0.25),rgba(0,240,255,0.1));
+  border:1px solid rgba(0,240,255,0.4);border-radius:var(--radius);
+  color:var(--text-bright);font-family:'Orbitron',sans-serif;font-size:9px;
+  font-weight:700;padding:8px;cursor:pointer;letter-spacing:1px
+}
+.open-game-btn:active{ background:rgba(0,240,255,0.3) }
+#qrOverlay{
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,0.92);
+  z-index:9999;align-items:center;justify-content:center;flex-direction:column
+}
+.qr-overlay-inner img{
+  width:220px;height:220px;border-radius:6px;background:#fff;padding:4px
+}
